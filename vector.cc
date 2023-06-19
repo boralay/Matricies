@@ -41,19 +41,19 @@ class AllocatorLeaking {
     }
 };
 
-static AllocatorLeaking singleton_allocator;
-void* operator new (std::size_t count) {
-    return singleton_allocator.allocate(count);
-};
-void* operator new[] (std::size_t count) {
-    return singleton_allocator.allocate(count);
-};
-void operator delete (void* ptr) { 
-    singleton_allocator.free(ptr);
-};
-void operator delete[] (void* ptr) { 
-    singleton_allocator.free(ptr);
-};
+// static AllocatorLeaking singleton_allocator;
+// void* operator new (std::size_t count) {
+//     return singleton_allocator.allocate(count);
+// };
+// void* operator new[] (std::size_t count) {
+//     return singleton_allocator.allocate(count);
+// };
+// void operator delete (void* ptr) { 
+//     singleton_allocator.free(ptr);
+// };
+// void operator delete[] (void* ptr) { 
+//     singleton_allocator.free(ptr);
+// };
 class Vector;
 class AccessVector;
 class ConstAccessVector {
@@ -76,8 +76,34 @@ class ConstAccessVector {
         assert(index >= 0);
         return ptr[index];
     }
+    double magnitude() const {
+        return sqrt(this->dotProduct(*this));
+    };
+    double dotProduct(const ConstAccessVector& vec2) const {
+        double sum = 0;
+        for (int ii = 0; ii < m_size; ii++) {
+            sum += (this->at(ii) * vec2.at(ii));
+        }
+        return sum;
+    };
+    bool operator==(const ConstAccessVector& other) const {
+        if (other.size() != this->size()) {
+            return false;
+        }
+        for (int ii = 0; ii < other.size(); ii++) {
+            if (other.at(ii) != this->at(ii)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    bool operator!=(const ConstAccessVector& other) const {
+        return !(*this == other);
+    }
+    Vector operator-() const;
     Vector operator+(const ConstAccessVector& vec) const;
     Vector operator-(const ConstAccessVector& vec) const;
+    Vector operator*(double scalar) const;
 };
 
 class AccessVector : public ConstAccessVector {
@@ -102,6 +128,12 @@ class AccessVector : public ConstAccessVector {
         }
         return *this;
     }
+    AccessVector& operator*=(double scalar) {
+        for (int ii = 0; ii < m_size; ii++) {
+            this->at(ii) *= scalar;
+        }
+        return *this;
+    }
 };
 
 class Vector : public AccessVector {
@@ -113,34 +145,10 @@ class Vector : public AccessVector {
         }
         at(index) = val;
     }
-    Vector& operator!() {
-        return *this * -1;
-    }
-    Vector& operator*=(double scalar) {
-        for (int ii = 0; ii < m_size; ii++) {
-            this->at(ii) *= scalar;
-        }
-        return *this;
-    }
-    Vector& operator*(double scalar) const {
-        Vector temp(*this);
-        return temp *= scalar;
-    }
-    double magnitude(const Vector& vec) const {
-        return sqrt(this->dotProduct(vec));
-    };
-    double dotProduct(const Vector& vec2) const {
-        double sum = 0;
-        for (int ii = 0; ii < m_size; ii++) {
-            sum += (this->at(ii) * vec2.at(ii));
-        }
-        return sum;
-    };
-
     size_t alignment_shift() { return 3; } // config
     size_t alignment() { return 1 << alignment_shift(); }
     size_t upround_to_alignment(size_t sz) {  
-        if (sz & (alignment() - 1) == 0) { 
+        if ((sz & (alignment() - 1)) == 0) { 
             return sz;
         } else {
             return sz / alignment() * alignment() + alignment();
@@ -170,16 +178,30 @@ class Vector : public AccessVector {
     // };
     Vector(const ConstAccessVector& other) {
         cout << "I am in " << __PRETTY_FUNCTION__ << TXT(this) << "\n";
-        this->resize(other.size());
-    };
+        construct(other);
+    }
+    Vector(const AccessVector& other) {
+        cout << "I am in " << __PRETTY_FUNCTION__ << TXT(this) << "\n";
+        construct(other);
+    }
+    Vector(const Vector& other) {
+        cout << "I am in " << __PRETTY_FUNCTION__ << TXT(this) << "\n";
+        construct(other);
+    }
     explicit Vector(int sz) {
         cout << "I am in " << __PRETTY_FUNCTION__ << TXT(this) << "\n";
         resize(sz);
-    };
+    }
     ~Vector() {
         cout << "I am in " << __PRETTY_FUNCTION__ << TXT(this) << "\n";
         resize(0);
-    };
+    }
+    void construct(const ConstAccessVector& other) {
+        this->resize(other.size());
+        for (int ii = 0; ii < other.size(); ii++) {
+            this->at(ii) = other.at(ii);
+        }
+    }
     private:
     size_t memory_size = 0;
     void allocate(int msz) {
@@ -208,6 +230,16 @@ Vector ConstAccessVector::operator-(const ConstAccessVector& vec) const {
     Vector temp(*this);
     return temp -= vec;
 }
+Vector ConstAccessVector::operator*(double scalar) const {
+    Vector temp(*this);
+    return temp *= scalar;
+}
+Vector ConstAccessVector::operator-() const {
+    Vector temp(*this);
+    return temp * -1;
+}
+
+
 void test1() {
     Vector obj;
     cout << obj << endl;
@@ -231,8 +263,23 @@ void test2() {
     v.resize(3);
     v.resize(2); 
     v.at(1) = 3;
+    v.at(0) = 4;
     v.resize(5);
     v.resize(9);
+    Vector v2(v);
+    assert(v2 == v);
+    cout << TXT(v2) << endl;
+    Vector v3 = v2 * 3;
+    assert(v3 != v2);
+    double mag = v2.magnitude();
+    assert(mag == 5);
+    double dot = v2.dotProduct(v3);
+    assert(dot == 75);
+    Vector v4 = v2 + v3;
+    assert(v4.magnitude() != 5 && v4.dotProduct(v3) != 75);
+
+    
+    cout << v3 << endl;
 }
 int main() {
     test2();
