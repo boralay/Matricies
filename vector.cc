@@ -12,12 +12,12 @@ void printBytes(void* ptr, int m_size);
 class AllocatorLeaking {
     public:
     // 8 byte aligned
-    const size_t pageSize = 1024 * 1024 * 1024;
     void* allocate(size_t s) {
         s = alignSize(s);
         assert(s <= pageSize);
         if (s >= spaceLeft) {
             ptr = reinterpret_cast<char*>(malloc(pageSize));
+            std::cout << "allocated " << pageSize << " amount of memory at=" << (void*)ptr << std::endl;
             spaceLeft = pageSize;
         }
         char* temp = ptr;
@@ -29,31 +29,29 @@ class AllocatorLeaking {
 
     }
     private:
+    const size_t pageSize = 1024 * 1024 * 1024;
     size_t spaceLeft = 0;
-    char* ptr = nullptr;
+    char* ptr = nullptr;   
+    
     size_t alignSize(size_t size) {
-        int num = size >> 3 << 3;
-        // return num % 8 ? num + 8 : num;
-        assert(num >= size);
-        assert(num % 8 == 0);
-        assert(num < size + 8);
-        return num & 0x7 ? num + 8 : num;
+        if(size & 0x7) return (size/8*8) + 8;
+        else return size;
     }
 };
 
-// static AllocatorLeaking singleton_allocator;
-// void* operator new (std::size_t count) {
-//     return singleton_allocator.allocate(count);
-// };
-// void* operator new[] (std::size_t count) {
-//     return singleton_allocator.allocate(count);
-// };
-// void operator delete (void* ptr) { 
-//     singleton_allocator.free(ptr);
-// };
-// void operator delete[] (void* ptr) { 
-//     singleton_allocator.free(ptr);
-// };
+static AllocatorLeaking singleton_allocator;
+void* operator new (std::size_t count) {
+    return singleton_allocator.allocate(count);
+};
+void* operator new[] (std::size_t count) {
+    return singleton_allocator.allocate(count);
+};
+void operator delete (void* ptr) { 
+    singleton_allocator.free(ptr);
+};
+void operator delete[] (void* ptr) { 
+    singleton_allocator.free(ptr);
+};
 class Vector;
 class AccessVector;
 class ConstAccessVector {
@@ -232,7 +230,8 @@ Vector ConstAccessVector::operator-(const ConstAccessVector& vec) const {
 }
 Vector ConstAccessVector::operator*(double scalar) const {
     Vector temp(*this);
-    return temp *= scalar;
+    temp *= scalar;
+    return temp;
 }
 Vector ConstAccessVector::operator-() const {
     Vector temp(*this);
@@ -277,9 +276,16 @@ void test2() {
     assert(dot == 75);
     Vector v4 = v2 + v3;
     assert(v4.magnitude() != 5 && v4.dotProduct(v3) != 75);
-
-    
+    Vector v5 = v4 - v3;
+    assert(v5 == v2);
+    Vector v6 = v2 * 2;
+    v2 += v2;
+    assert(v6 == v2);
+    cout << v2 << endl;
     cout << v3 << endl;
+    cout << v4 << endl;
+    cout << v5 << endl;
+    cout << v6 << endl;
 }
 int main() {
     test2();
