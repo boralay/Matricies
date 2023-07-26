@@ -19,10 +19,6 @@ namespace BMP {
     ConstAccessVector(const AccessVector&);  
     ConstAccessVector() { begin=end=pointer=nullptr; }
 
-    ConstAccessVector& operator++(int); //with assert on range checks allowint end but not end+1
-    ConstAccessVector& operator++();
-    const T& circular_increment(Index=0);
-
     const T& operator * () const; //with asserts on range
     const T& operator [] (Index) const; //with asserts on range
 
@@ -32,16 +28,9 @@ namespace BMP {
     TVector operator * (const T&);
     T dot_product (const ConstAccessTVector&);
 
-
-    Index min_index(); //returns index of min element
-    Index max_index(); //returns index of max element
     T sum();
     T magnitude(); //norm assuming sqrt is defined on T
    
-    int size() const {
-      return end - begin;
-    }
-
     friend ostream& (ostream&, const ConstAccessVector&);
   };
 
@@ -55,10 +44,6 @@ namespace BMP {
     AccessTVector(const ConstAccessTVector&)=delete;  
     AccessTVector(const AccessTVector&) =default;  
     AccessTVector()=default;
-
-    AccessTVector& operator++(int); //with assert on range checks allowint end but not end+1
-    AccessTVector& operator++();
-    T& circular_increment(int=0);
 
     T& operator * () const; //with asserts on range
     T& operator [] (int) const; //with asserts on range

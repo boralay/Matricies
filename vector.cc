@@ -6,8 +6,9 @@ using namespace std;
 
 void printBytes(void* ptr, int m_size);
 
-// todo: read about debugger and makefile capailities of tool.
-// virtual function and runtime polymorphism
+// todo: virtual function and runtime polymorphism
+// create matrix class 
+// 
 
 class AllocatorLeaking {
     public:
@@ -59,9 +60,10 @@ class ConstAccessVector {
     size_t m_size = 0;
     double* ptr = nullptr;
     public:
+    ConstAccessVector subvector(int begin_idx, int end_idx) const;
     int size() const {
         return m_size;
-    };
+    }
     friend ostream& operator<<(ostream& os, const ConstAccessVector& ob) {
         os << "class Vector address: " << (&ob) << ". size: " << ob.m_size << ". pointer: " << ob.ptr << "\n";
         for (int ii = 0; ii < ob.m_size; ii++) {
@@ -106,6 +108,17 @@ class ConstAccessVector {
 
 class AccessVector : public ConstAccessVector {
     public:
+    using ConstAccessVector::subvector;
+    AccessVector subvector(int begin_idx, int end_idx) {
+        AccessVector temp;
+        assert((end_idx - begin_idx) <= m_size);
+        assert(begin_idx >= 0);
+        assert(begin_idx <= m_size);
+        assert(end_idx <= m_size);
+        temp.ptr = this->ptr + begin_idx;
+        temp.m_size = end_idx - begin_idx;
+        return temp;
+    }
     using ConstAccessVector :: at;
     double& at(int index) {
         assert(index < m_size);
@@ -133,6 +146,18 @@ class AccessVector : public ConstAccessVector {
         return *this;
     }
 };
+ConstAccessVector ConstAccessVector::subvector(int begin_idx, int end_idx) const {
+    // code copy from AccessVector
+    ConstAccessVector temp;
+    assert((end_idx - begin_idx) <= m_size);
+    assert(begin_idx >= 0);
+    assert(begin_idx <= m_size);
+    assert(end_idx <= m_size);
+    temp.ptr = this->ptr + begin_idx;
+    temp.m_size = end_idx - begin_idx;
+    return temp;
+}
+
 
 class Vector : public AccessVector {
     public:
@@ -257,6 +282,20 @@ void test1() {
     Vector result = obj + obj2;
     cout << TXT(result) << endl;
 }
+void test_vector(Vector& v) {
+    auto av7 = v.subvector(0, 3);
+    Vector v8(av7);
+    ConstAccessVector av9 = av7.subvector(2, 3);
+    cout << TXT(v8) << endl;
+    cout << TXT(av9) << endl;
+    cout << TXT(av7) << endl;
+    v.resize(20);
+    v.at(0) = 5;
+    cout << TXT(v) << endl;
+    cout << TXT(av7) << endl;
+    cout << TXT(v8) << endl;
+    cout << TXT(av9) << endl;
+}
 void test2() {
     Vector v;
     v.resize(3);
@@ -281,11 +320,12 @@ void test2() {
     Vector v6 = v2 * 2;
     v2 += v2;
     assert(v6 == v2);
-    cout << v2 << endl;
-    cout << v3 << endl;
-    cout << v4 << endl;
-    cout << v5 << endl;
-    cout << v6 << endl;
+    cout << TXT(v2) << endl;
+    cout << TXT(v3) << endl;
+    cout << TXT(v4) << endl;
+    cout << TXT(v5) << endl;
+    cout << TXT(v6) << endl;
+    test_vector(v2);
 }
 int main() {
     test2();
