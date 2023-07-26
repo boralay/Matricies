@@ -271,10 +271,10 @@ class Matrix : Vector {
         num_cols_ = cols;
         resize(rows, cols);
     }
-    int num_cols() {
+    int num_cols() const {
         return num_cols_;
     }
-    int num_rows() {
+    int num_rows() const {
         assert(num_cols() > 0);
         return Vector::size() / num_cols();
     }
@@ -298,9 +298,27 @@ class Matrix : Vector {
     }
     Matrix operator+(Matrix& m) {
         Matrix m1(*this);
-        for (int ii = 0; ii < (num_cols() * num_rows()); ii++) {
+        for (int ii = 0; ii < num_rows(); ii++) {
             m1[ii] = (*this)[ii] + m[ii];
         }
+        return m1;
+    }
+    AccessVector getCol(int col) const {
+        Vector v(num_rows());
+        for (int ii = 0; ii < num_rows(); ii++) {
+            v[ii] = (*this)[(ii * num_cols())][col];
+        }
+        return v;
+    }
+    Matrix operator*(Matrix& m) {
+        assert(m.num_cols() == this->num_cols());
+        assert(m.num_rows() == this->num_rows());
+        Matrix m1(*this);
+        for (int ii = 0; ii < num_rows(); ii++) {
+            for (int jj = 0; jj < num_cols(); jj++) {
+                m1[ii][jj] = (*this)[ii].dotProduct(m.getCol(jj));
+            }
+        } 
         return m1;
     }
     private: 
@@ -397,12 +415,3 @@ void printBytes(void* ptr, int m_size) {
         cout << ii << ": " << var << endl;
     }
 }
-// DONE : 
-
-// todo: write class named AllocatorLeaking
-// allocate big chunk of memory using malloc when new is called return from this chunk and if delete is called do nothing. if chunk finishes then allocate new chunk
-// have static singleton variable of type AllocatorLeaking called singleton_allocator_leaking
-// todo 2: define operator new and operator delete using singleton_allocator_leaking
-// todo 3: memm_size member do not free already allocated memory when shrinking, only increase always to the power of 2. have funciton called 
-// allocate which does what resize is doing
-// todo 4: shrink to minimal possible memm_size at that time
