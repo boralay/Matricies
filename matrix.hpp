@@ -8,7 +8,6 @@ namespace BMP {
   class ConstAccessTVector {
     T* begin;
     T* end;
-    T* pointer;
 
   public:
     typedef int Index;
@@ -105,6 +104,7 @@ namespace BMP {
     TVector operator * (const ConstAccessTMatrix&);
     TMatrix<T> transpose();
     Tmatrix operator ^ (int); //implement -1, and other integers
+    operator+();
   };
 
   template<T>

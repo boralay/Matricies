@@ -76,6 +76,9 @@ class ConstAccessVector {
         assert(index >= 0);
         return ptr[index];
     }
+    double operator[](int index) const {
+        return this->at(index);
+    }
     double magnitude() const {
         return sqrt(this->dotProduct(*this));
     };
@@ -124,6 +127,9 @@ class AccessVector : public ConstAccessVector {
         assert(index < m_size);
         assert(index >= 0);
         return ptr[index];
+    }
+    double& operator[](int index) {
+        return this->at(index);
     }
     AccessVector& operator+=(const ConstAccessVector& vec) {
         assert(vec.size() == m_size);
@@ -263,6 +269,41 @@ Vector ConstAccessVector::operator-() const {
     return temp * -1;
 }
 
+class Matrix : Vector {
+    public:
+    Matrix(int rows, int cols) {
+        num_cols_ = cols;
+        resize(rows, cols);
+    }
+    int num_cols() {
+        return num_cols_;
+    }
+    int num_rows() {
+        assert(num_cols() > 0);
+        return Vector::size() / num_cols();
+    }
+    AccessVector operator[](int row) {
+        return Vector::subvector(num_cols() * row, num_cols() * (row + 1));
+    }
+    ConstAccessVector operator[](int val) const;
+    Vector operator*(ConstAccessVector& v) {
+        assert(v.size() == num_cols());
+        Vector v1(num_rows());
+        for(int ii = 0; ii < num_rows(); ii++) {
+            v1[ii] = (*this)[ii].dotProduct(v);
+        }
+        return v1;
+    }
+    void resize(int rows, int cols) {
+        assert(rows > 0 && cols > 0);
+        int product = rows*cols;
+        Vector::resize(product);
+        assert(product == Vector::size());
+    }
+    private: 
+    int num_cols_ = 0;
+};
+
 
 void test1() {
     Vector obj;
@@ -295,6 +336,21 @@ void test_vector(Vector& v) {
     cout << TXT(av7) << endl;
     cout << TXT(v8) << endl;
     cout << TXT(av9) << endl;
+    Vector v10(av7);
+    v10.at(0) = 1.0;
+    cout << TXT(v10) << endl;
+    cout << TXT(av7) << endl;
+}
+void test_matrix() {
+    Matrix M(2, 3);
+    cout << M[0] << endl;
+    M[0][0] = 2.1;
+    M[1][1] = 3.1;
+    M[1][2] = 4.1;
+    auto v = M[1]; 
+    auto v2 = M*v;
+    cout << TXT(v) << endl;
+    cout << TXT(v2) << endl;
 }
 void test2() {
     Vector v;
@@ -328,7 +384,7 @@ void test2() {
     test_vector(v2);
 }
 int main() {
-    test2();
+    test_matrix();
 }
 
 void printBytes(void* ptr, int m_size) {
