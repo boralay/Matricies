@@ -296,6 +296,13 @@ class Matrix : Vector {
         Vector::resize(product);
         assert(product == Vector::size());
     }
+    Matrix operator+(Matrix& m) {
+        Matrix m1(*this);
+        for (int ii = 0; ii < (num_cols() * num_rows()); ii++) {
+            m1[ii] = (*this)[ii] + m[ii];
+        }
+        return m1;
+    }
     private: 
     int num_cols_ = 0;
 };
