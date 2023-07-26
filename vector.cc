@@ -6,10 +6,6 @@ using namespace std;
 
 void printBytes(void* ptr, int m_size);
 
-// todo: virtual function and runtime polymorphism
-// create matrix class 
-// 
-
 class AllocatorLeaking {
     public:
     // 8 byte aligned
