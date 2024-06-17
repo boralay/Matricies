@@ -1,8 +1,13 @@
 #include <iostream>
+#include <cuda_runtime_api.h>
+#include <cuda.h>
+#include "kernels.h"
+#include <cassert>
 #include <cmath>
 using namespace std;
 #define TXT(x)  #x << "=" << x
 #define PRINT(x, s)  {cout << "variable " << #x << endl; printBytes(x, s);}
+
 
 void printBytes(void* ptr, int m_size);
 
@@ -49,6 +54,10 @@ void operator delete (void* ptr) {
 void operator delete[] (void* ptr) { 
     singleton_allocator.free(ptr);
 };
+
+
+
+
 class Vector;
 class AccessVector;
 class ConstAccessVector {
@@ -103,6 +112,7 @@ class ConstAccessVector {
     Vector operator+(const ConstAccessVector& vec) const;
     Vector operator-(const ConstAccessVector& vec) const;
     Vector operator*(double scalar) const;
+    friend AccessVector;
 };
 
 class AccessVector : public ConstAccessVector {
@@ -134,6 +144,36 @@ class AccessVector : public ConstAccessVector {
         }
         return *this;
     }
+
+    AccessVector& addOnGPU(const ConstAccessVector& vec) {
+      void* this_on_device;
+      void* other_on_device;
+      assert(vec.size() == this->size());
+      cudaMalloc(&this_on_device, sizeof(double)*this->size());
+      cudaMalloc(&other_on_device, sizeof(double)*vec.size());
+      cudaMemcpy(this_on_device, this->ptr, sizeof(double)*this->size(), cudaMemcpyHostToDevice);
+      cudaMemcpy(other_on_device, vec.ptr, sizeof(double)*vec.size(), cudaMemcpyHostToDevice);
+
+      // const int BLOCKSIZE = 256;
+      //int numblocks = (this->size()+255)/256;
+      //kernel_gpu_add_double_vectors<<<numblocks, BLOCKSIZE>>>(this->size(), (double*) this_on_device, (double*) other_on_device);
+
+      kernel_gpu_add_double_vectors(this->size(), (double*) this_on_device, (double*) other_on_device);
+
+      cudaMemcpy(this_on_device, this->ptr, sizeof(double)*this->size(), cudaMemcpyDeviceToHost);
+      
+      cudaFree(this_on_device);
+      cudaFree(other_on_device);
+
+     
+
+      // allocate space on gpu using cuda_malloc
+      // copy contents of both vectors onto gpu memory using cuda memcpy
+      // execute a kernel on gpu to do the addition
+      // bring back result to cpu using cuda memcpy
+    } 
+
+  
     AccessVector& operator-=(const ConstAccessVector& vec) {
         assert(vec.size() == m_size);
         for (int ii = 0; ii < m_size; ii++) {
@@ -285,7 +325,7 @@ class Matrix : Vector {
     Vector operator*(ConstAccessVector& v) {
         assert(v.size() == num_cols());
         Vector v1(num_rows());
-        for(int ii = 0; ii < num_rows(); ii++) {
+	for(int ii = 0; ii < num_rows(); ii++) {
             v1[ii] = (*this)[ii].dotProduct(v);
         }
         return v1;
@@ -415,3 +455,5 @@ void printBytes(void* ptr, int m_size) {
         cout << ii << ": " << var << endl;
     }
 }
+
+
