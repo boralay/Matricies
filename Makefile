@@ -1,9 +1,9 @@
 # CXX=clang++
-CXX=g++
+CXX=g++ 
 NVCC=nvcc
 INCLUDES=
 # CXXFLAGS= -Wall -std=c++20 $(INCLUDES)
-CXXFLAGS= -std=c++20 $(INCLUDES)
+CXXFLAGS= -std=c++20 $(INCLUDES) -g
 
 # hel: main.cc hello.cc
 #	$(CXX) $(CXXFLAGS) $^

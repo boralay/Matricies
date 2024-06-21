@@ -151,21 +151,32 @@ class AccessVector : public ConstAccessVector {
       assert(vec.size() == this->size());
       cudaMalloc(&this_on_device, sizeof(double)*this->size());
       cudaMalloc(&other_on_device, sizeof(double)*vec.size());
-      cudaMemcpy(this_on_device, this->ptr, sizeof(double)*this->size(), cudaMemcpyHostToDevice);
-      cudaMemcpy(other_on_device, vec.ptr, sizeof(double)*vec.size(), cudaMemcpyHostToDevice);
-
+      auto err1 = cudaMemcpy(this_on_device, this->ptr, sizeof(double)*this->size(), cudaMemcpyHostToDevice);
+      if (err1 != cudaSuccess) {
+	cout << "cudaMemcpy fail at line:" <<__FILE__ << ":" <<  __LINE__<< endl;
+      }
+      auto err2 = cudaMemcpy(other_on_device, vec.ptr, sizeof(double)*vec.size(), cudaMemcpyHostToDevice);
+      if (err2 != cudaSuccess) {
+	cout << "cudaMemcpy fail at line:" <<__FILE__ << ":" <<  __LINE__<< endl;
+      }
+      
       // const int BLOCKSIZE = 256;
       //int numblocks = (this->size()+255)/256;
       //kernel_gpu_add_double_vectors<<<numblocks, BLOCKSIZE>>>(this->size(), (double*) this_on_device, (double*) other_on_device);
 
       kernel_gpu_add_double_vectors(this->size(), (double*) this_on_device, (double*) other_on_device);
-
-      cudaMemcpy(this_on_device, this->ptr, sizeof(double)*this->size(), cudaMemcpyDeviceToHost);
+      
+      
+      auto err = cudaMemcpy(this->ptr, this_on_device, sizeof(double)*this->size(), cudaMemcpyDeviceToHost);
+      if (err != cudaSuccess) {
+	cout << "cudaMemcpy fail at line:" <<__FILE__ << ":" <<  __LINE__<< endl;
+      }
+			    
       
       cudaFree(this_on_device);
       cudaFree(other_on_device);
 
-     
+      return *this;
 
       // allocate space on gpu using cuda_malloc
       // copy contents of both vectors onto gpu memory using cuda memcpy
@@ -444,8 +455,23 @@ void test2() {
     cout << TXT(v6) << endl;
     test_vector(v2);
 }
+void test3() {
+  Vector v;
+  v.resize(10);
+  v.at(0) = 3;
+  v.at(4) = 4;
+  Vector v2;
+  v2.resize(10);
+  v2.at(0) = 5;
+  v2.at(4) = 2;
+  
+
+  v.addOnGPU(v2);
+  cout << TXT(v) << endl;
+  cout << TXT(v2) << endl;
+}
 int main() {
-    test_matrix();
+   test3();
 }
 
 void printBytes(void* ptr, int m_size) {
