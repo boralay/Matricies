@@ -246,30 +246,30 @@ class Vector : public AccessVector {
         assert(m_size <= memory_size);
     }
     Vector() {
-        cout << "I am in " << __PRETTY_FUNCTION__ << TXT(this) << "\n";
+      // cout << "I am in " << __PRETTY_FUNCTION__ << TXT(this) << "\n";
     };
     // Vector(const Vector& other) {
     //    cout << "I am in " << __PRETTY_FUNCTION__ << TXT(this) << "\n";
     //    this->resize(other.size());
     // };
     Vector(const ConstAccessVector& other) {
-        cout << "I am in " << __PRETTY_FUNCTION__ << TXT(this) << "\n";
+      //  cout << "I am in " << __PRETTY_FUNCTION__ << TXT(this) << "\n";
         construct(other);
     }
     Vector(const AccessVector& other) {
-        cout << "I am in " << __PRETTY_FUNCTION__ << TXT(this) << "\n";
+      //  cout << "I am in " << __PRETTY_FUNCTION__ << TXT(this) << "\n";
         construct(other);
     }
     Vector(const Vector& other) {
-        cout << "I am in " << __PRETTY_FUNCTION__ << TXT(this) << "\n";
+      //   cout << "I am in " << __PRETTY_FUNCTION__ << TXT(this) << "\n";
         construct(other);
     }
     explicit Vector(int sz) {
-        cout << "I am in " << __PRETTY_FUNCTION__ << TXT(this) << "\n";
+      //  cout << "I am in " << __PRETTY_FUNCTION__ << TXT(this) << "\n";
         resize(sz);
     }
     ~Vector() {
-        cout << "I am in " << __PRETTY_FUNCTION__ << TXT(this) << "\n";
+      //        cout << "I am in " << __PRETTY_FUNCTION__ << TXT(this) << "\n";
         resize(0);
     }
     void construct(const ConstAccessVector& other) {
@@ -317,54 +317,78 @@ Vector ConstAccessVector::operator-() const {
 }
 
 class Matrix : Vector {
-    public:
-    Matrix(int rows, int cols) {
-        num_cols_ = cols;
-        resize(rows, cols);
+public:
+  Matrix(int rows, int cols) {
+    num_cols_ = cols;
+    resize(rows, cols);
+  }
+  int num_cols() const {
+    return num_cols_;
+  }
+  int num_rows() const {
+    assert(num_cols() > 0);
+    return Vector::size() / num_cols();
+  }
+  AccessVector operator[](int row) {
+    return Vector::subvector(num_cols() * row, num_cols() * (row + 1));
+  }
+  ConstAccessVector operator[](int val) const {
+    return const_cast<Matrix&>(*this)[val];
+  }
+  Vector operator*(ConstAccessVector& v) {
+    assert(v.size() == num_cols());
+    Vector v1(num_rows());
+    for(int ii = 0; ii < num_rows(); ii++) {
+      v1[ii] = (*this)[ii].dotProduct(v);
     }
-    int num_cols() const {
-        return num_cols_;
+    return v1;
+  }
+  friend ostream& operator<<(ostream& os, const Matrix& m) {
+    os << "class Vector address: " << (&m) << " pointer: " << m.ptr << "\n";
+    for (int ii = 0; ii < m.num_rows(); ii++) {
+      for (int jj = 0; jj < m.num_cols(); jj++) {
+	os << m[ii][jj] << " ";
+      }
+      os << "\n";
     }
-    int num_rows() const {
-        assert(num_cols() > 0);
-        return Vector::size() / num_cols();
-    }
-    AccessVector operator[](int row) {
-        return Vector::subvector(num_cols() * row, num_cols() * (row + 1));
-    }
-    ConstAccessVector operator[](int val) const;
-    Vector operator*(ConstAccessVector& v) {
-        assert(v.size() == num_cols());
-        Vector v1(num_rows());
-	for(int ii = 0; ii < num_rows(); ii++) {
-            v1[ii] = (*this)[ii].dotProduct(v);
-        }
-        return v1;
-    }
-    void resize(int rows, int cols) {
-        assert(rows > 0 && cols > 0);
-        int product = rows*cols;
-        Vector::resize(product);
-        assert(product == Vector::size());
-    }
-    Matrix operator+(Matrix& m) {
+    return os;
+  }
+  double& at(int row, int col) {
+    return Vector::operator[](row * num_cols() + col);
+  }
+  void resize(int rows, int cols) {
+    assert(rows > 0 && cols > 0);
+    int product = rows*cols;
+    Vector::resize(product);
+    assert(product == Vector::size());
+  }
+  Matrix operator+(Matrix& m) {
         Matrix m1(*this);
         for (int ii = 0; ii < num_rows(); ii++) {
             m1[ii] = (*this)[ii] + m[ii];
         }
         return m1;
     }
+  Matrix transpose() {
+    Matrix m(this->num_cols(), this->num_rows());
+    for (int row = 0; row < this->num_rows(); row++) {
+      auto v = (*this)[row];
+      for (int col = 0; col < v.size(); col++) {
+	m.at(col, row) = v[col];
+      }
+    }
+    return m;
+  }
     AccessVector getCol(int col) const {
         Vector v(num_rows());
         for (int ii = 0; ii < num_rows(); ii++) {
-            v[ii] = (*this)[(ii * num_cols())][col];
+            v[ii] = (*this)[ii][col];
         }
         return v;
     }
     Matrix operator*(Matrix& m) {
-        assert(m.num_cols() == this->num_cols());
-        assert(m.num_rows() == this->num_rows());
-        Matrix m1(*this);
+        assert(m.num_rows() == this->num_cols());
+	Matrix m1(this->num_rows(), m.num_cols());
         for (int ii = 0; ii < num_rows(); ii++) {
             for (int jj = 0; jj < num_cols(); jj++) {
                 m1[ii][jj] = (*this)[ii].dotProduct(m.getCol(jj));
@@ -372,6 +396,37 @@ class Matrix : Vector {
         } 
         return m1;
     }
+    Matrix multiplyOnGPU(Matrix& other) {
+      void* transposed_matrix_on_device;
+      void* other_on_device;
+      void* result_on_device;
+      assert(this->num_cols() == other.num_rows());
+      auto transposed_matrix = this->transpose();
+      cudaMalloc(&transposed_matrix_on_device, sizeof(double)*this->num_cols()*this->num_rows());
+      cudaMalloc(&other_on_device, sizeof(double)*other.num_cols()*other.num_rows());
+      cudaMalloc(&result_on_device, sizeof(double)*this->num_rows()*other.num_cols());
+      auto err1 = cudaMemcpy(transposed_matrix_on_device, transposed_matrix.ptr, sizeof(double)*this->num_cols()*this->num_rows(), cudaMemcpyHostToDevice);
+      if (err1 != cudaSuccess) {
+	cout << "cudaMemcpy fail at line:" <<__FILE__ << ":" <<  __LINE__<< endl;
+      }
+      auto err2 = cudaMemcpy(other_on_device, other.ptr, sizeof(double)*other.num_cols()*other.num_rows(), cudaMemcpyHostToDevice);
+      if (err2 != cudaSuccess) {
+	cout << "cudaMemcpy fail at line:" <<__FILE__ << ":" <<  __LINE__<< endl;
+      }
+      auto err3 = cudaMemset(result_on_device, 0, sizeof(double)*this->num_rows()*other.num_cols());
+      if (err3 != cudaSuccess) {
+	cout << "cudaMemset fail at line:" <<__FILE__ << ":" <<  __LINE__<< endl;
+      }
+      kernel_gpu_multiply_matrix_by_matrix(this->num_rows(), other.num_rows(), other.num_cols(), (double*) transposed_matrix_on_device, (double*) other_on_device, (double*) result_on_device);
+
+      Matrix result(this->num_rows(), other.num_cols());
+      auto err4 = cudaMemcpy(result.ptr, result_on_device, sizeof(double)*this->num_rows()*other.num_cols(), cudaMemcpyDeviceToHost);
+      if (err4 != cudaSuccess) {
+	cout << "cudaMemcpy fail at line:" << __FILE__ << ":" << __LINE__ << endl;
+      }
+      return result;
+  }
+  
     private: 
     int num_cols_ = 0;
 };
@@ -415,14 +470,25 @@ void test_vector(Vector& v) {
 }
 void test_matrix() {
     Matrix M(2, 3);
-    cout << M[0] << endl;
+   
     M[0][0] = 2.1;
     M[1][1] = 3.1;
     M[1][2] = 4.1;
-    auto v = M[1]; 
-    auto v2 = M*v;
-    cout << TXT(v) << endl;
-    cout << TXT(v2) << endl;
+    auto v = M[0];
+    auto v2 = M[1];
+    
+    
+    
+    Matrix Mat(3, 5);
+    Mat[0][0] = 5;
+    Mat[1][1] = 3;
+    Mat[1][2] = 4;
+    auto result = M.multiplyOnGPU(Mat);
+    cout << M << endl;
+    cout << Mat << endl;
+    auto result_on_CPU = M*Mat;
+    cout << result_on_CPU << endl;
+    cout << result << endl;
 }
 void test2() {
     Vector v;
@@ -471,7 +537,7 @@ void test3() {
   cout << TXT(v2) << endl;
 }
 int main() {
-   test3();
+   test_matrix();
 }
 
 void printBytes(void* ptr, int m_size) {
