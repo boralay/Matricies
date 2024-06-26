@@ -145,7 +145,7 @@ class AccessVector : public ConstAccessVector {
         return *this;
     }
 
-    AccessVector& addOnGPU(const ConstAccessVector& vec) {
+  AccessVector& computeOnGPU(const ConstAccessVector& vec, func_idpdp ff) {
       void* this_on_device;
       void* other_on_device;
       assert(vec.size() == this->size());
@@ -164,7 +164,8 @@ class AccessVector : public ConstAccessVector {
       //int numblocks = (this->size()+255)/256;
       //kernel_gpu_add_double_vectors<<<numblocks, BLOCKSIZE>>>(this->size(), (double*) this_on_device, (double*) other_on_device);
 
-      kernel_gpu_add_double_vectors(this->size(), (double*) this_on_device, (double*) other_on_device);
+      //   kernel_gpu_add_double_vectors(this->size(), (double*) this_on_device, (double*) other_on_device);
+      (*ff)(this->size(), (double*) this_on_device, (double*) other_on_device);
       
       
       auto err = cudaMemcpy(this->ptr, this_on_device, sizeof(double)*this->size(), cudaMemcpyDeviceToHost);
@@ -183,7 +184,10 @@ class AccessVector : public ConstAccessVector {
       // execute a kernel on gpu to do the addition
       // bring back result to cpu using cuda memcpy
     } 
-
+   AccessVector& addOnGPU(const ConstAccessVector& vec) {
+     return computeOnGPU(vec, kernel_gpu_add_double_vectors);
+   }
+  double dotProductOnGPU(const ConstAccessVector& vec) const;
   
     AccessVector& operator-=(const ConstAccessVector& vec) {
         assert(vec.size() == m_size);
@@ -192,6 +196,7 @@ class AccessVector : public ConstAccessVector {
         }
         return *this;
     }
+  
     AccessVector& operator*=(double scalar) {
         for (int ii = 0; ii < m_size; ii++) {
             this->at(ii) *= scalar;
@@ -296,6 +301,10 @@ class Vector : public AccessVector {
     }
     // int mem2 = 0;
 };
+double AccessVector::dotProductOnGPU(const ConstAccessVector& vec) const {
+    Vector v1(*this);
+    return v1.computeOnGPU(vec, kernel_gpu_dot_product_vectors)[0];
+}
 Vector ConstAccessVector::operator+(const ConstAccessVector& vec) const {
     Vector temp(*this);
     temp += vec;
@@ -396,6 +405,7 @@ public:
         } 
         return m1;
     }
+
     Matrix multiplyOnGPU(Matrix& other) {
       void* transposed_matrix_on_device;
       void* other_on_device;
@@ -526,18 +536,20 @@ void test3() {
   v.resize(10);
   v.at(0) = 3;
   v.at(4) = 4;
+  v.at(5) = 2;
   Vector v2;
   v2.resize(10);
   v2.at(0) = 5;
   v2.at(4) = 2;
   
-
-  v.addOnGPU(v2);
+  auto result = v.dotProductOnGPU(v2);
   cout << TXT(v) << endl;
+  
   cout << TXT(v2) << endl;
+  cout << result << endl;
 }
 int main() {
-   test_matrix();
+   test3();
 }
 
 void printBytes(void* ptr, int m_size) {
