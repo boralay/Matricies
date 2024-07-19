@@ -1,10 +1,14 @@
 #include <iostream>
+#include <iomanip>
 #include <cuda_runtime_api.h>
 #include <cuda.h>
+#include <stdlib.h>
 #include "kernels.h"
 #include <cassert>
 #include <cmath>
+#include <cstdlib>
 using namespace std;
+#define EPSILON 1e-13
 #define TXT(x)  #x << "=" << x
 #define PRINT(x, s)  {cout << "variable " << #x << endl; printBytes(x, s);}
 
@@ -40,8 +44,9 @@ class AllocatorLeaking {
         else return size;
     }
 };
-
 static AllocatorLeaking singleton_allocator;
+
+#ifdef LEAKY 
 void* operator new (std::size_t count) {
     return singleton_allocator.allocate(count);
 };
@@ -54,8 +59,7 @@ void operator delete (void* ptr) {
 void operator delete[] (void* ptr) { 
     singleton_allocator.free(ptr);
 };
-
-
+#endif
 
 
 class Vector;
@@ -283,6 +287,21 @@ class Vector : public AccessVector {
             this->at(ii) = other.at(ii);
         }
     }
+    void fillRandom() {
+      for (int i = 0; i < this->size(); i++) {
+	this->at(i) = drand48();
+      }
+    }
+  void fillOnes() {
+    for (int i = 0; i < this->size(); i++) {
+	this->at(i) = 1;
+      }
+  }
+  void fillConsecutive() {
+    for (int i = 0; i < this->size(); i++) {
+	this->at(i) = i;
+      }
+  }
     private:
     size_t memory_size = 0;
     void allocate(int msz) {
@@ -300,11 +319,13 @@ class Vector : public AccessVector {
         memory_size = msz;
     }
     // int mem2 = 0;
+    
 };
 double AccessVector::dotProductOnGPU(const ConstAccessVector& vec) const {
     Vector v1(*this);
     return v1.computeOnGPU(vec, kernel_gpu_dot_product_vectors)[0];
 }
+
 Vector ConstAccessVector::operator+(const ConstAccessVector& vec) const {
     Vector temp(*this);
     temp += vec;
@@ -325,7 +346,7 @@ Vector ConstAccessVector::operator-() const {
     return temp * -1;
 }
 
-class Matrix : Vector {
+class Matrix : public Vector {
 public:
   Matrix(int rows, int cols) {
     num_cols_ = cols;
@@ -399,22 +420,30 @@ public:
         assert(m.num_rows() == this->num_cols());
 	Matrix m1(this->num_rows(), m.num_cols());
         for (int ii = 0; ii < num_rows(); ii++) {
-            for (int jj = 0; jj < num_cols(); jj++) {
+            for (int jj = 0; jj < m.num_cols(); jj++) {
                 m1[ii][jj] = (*this)[ii].dotProduct(m.getCol(jj));
             }
         } 
         return m1;
     }
 
-    Matrix multiplyOnGPU(Matrix& other) {
+
+    
+    
+  Matrix multiplyOnGPU(Matrix& other, bool RbyC) {
       void* transposed_matrix_on_device;
       void* other_on_device;
       void* result_on_device;
+      void* this_on_device;
+      void* transposed_other_on_device;
       assert(this->num_cols() == other.num_rows());
       auto transposed_matrix = this->transpose();
+      auto transposed_other = other.transpose();
       cudaMalloc(&transposed_matrix_on_device, sizeof(double)*this->num_cols()*this->num_rows());
+      cudaMalloc(&transposed_other_on_device, sizeof(double)*other.num_cols()*other.num_rows());
       cudaMalloc(&other_on_device, sizeof(double)*other.num_cols()*other.num_rows());
       cudaMalloc(&result_on_device, sizeof(double)*this->num_rows()*other.num_cols());
+      cudaMalloc(&this_on_device, sizeof(double)*this->num_cols()*this->num_rows());
       auto err1 = cudaMemcpy(transposed_matrix_on_device, transposed_matrix.ptr, sizeof(double)*this->num_cols()*this->num_rows(), cudaMemcpyHostToDevice);
       if (err1 != cudaSuccess) {
 	cout << "cudaMemcpy fail at line:" <<__FILE__ << ":" <<  __LINE__<< endl;
@@ -423,23 +452,58 @@ public:
       if (err2 != cudaSuccess) {
 	cout << "cudaMemcpy fail at line:" <<__FILE__ << ":" <<  __LINE__<< endl;
       }
-      auto err3 = cudaMemset(result_on_device, 0, sizeof(double)*this->num_rows()*other.num_cols());
+      auto err3 = cudaMemcpy(this_on_device, this->ptr, sizeof(double)*this->num_cols()*this->num_rows(), cudaMemcpyHostToDevice);
       if (err3 != cudaSuccess) {
+	cout << "cudaMemcpy fail at line:" <<__FILE__ << ":" <<  __LINE__<< endl;
+      }
+      auto err4 = cudaMemset(result_on_device, 0, sizeof(double)*this->num_rows()*other.num_cols());
+      if (err4 != cudaSuccess) {
 	cout << "cudaMemset fail at line:" <<__FILE__ << ":" <<  __LINE__<< endl;
       }
-      kernel_gpu_multiply_matrix_by_matrix(this->num_rows(), other.num_rows(), other.num_cols(), (double*) transposed_matrix_on_device, (double*) other_on_device, (double*) result_on_device);
-
+      auto err6 = cudaMemcpy(transposed_other_on_device, transposed_other.ptr, sizeof(double)*other.num_cols()*other.num_rows(), cudaMemcpyHostToDevice);
+      if (err6 != cudaSuccess) {
+	cout << "cudaMemcpy fail at line:" <<__FILE__ << ":" <<  __LINE__<< endl;
+      }
+      
+      
+      if (RbyC) {
+	kernel_gpu_multiply_matrix_by_matrix_RbyC(this->num_rows(), other.num_rows(), other.num_cols(), (double*) this_on_device, (double*) transposed_other_on_device, (double*) result_on_device);
+      } else {
+	kernel_gpu_multiply_matrix_by_matrix_CbyR(this->num_rows(), other.num_rows(), other.num_cols(), (double*) transposed_matrix_on_device, (double*) other_on_device, (double*) result_on_device);
+      }
       Matrix result(this->num_rows(), other.num_cols());
-      auto err4 = cudaMemcpy(result.ptr, result_on_device, sizeof(double)*this->num_rows()*other.num_cols(), cudaMemcpyDeviceToHost);
-      if (err4 != cudaSuccess) {
+      auto err5 = cudaMemcpy(result.ptr, result_on_device, sizeof(double)*this->num_rows()*other.num_cols(), cudaMemcpyDeviceToHost);
+      if (err5 != cudaSuccess) {
 	cout << "cudaMemcpy fail at line:" << __FILE__ << ":" << __LINE__ << endl;
       }
       return result;
   }
-  
     private: 
     int num_cols_ = 0;
 };
+bool isAboutSame(const double& double1, const double& double2) {
+    if (double1 + double2 == 0) {
+      return (double1 == 0);
+    } 
+    double comparison = fabs(double1 - double2) / fabs(double1 + double2); 
+    if (comparison < EPSILON) {
+      return true;
+    } else {
+      return false;
+    }
+}
+
+bool isAboutSame(const ConstAccessVector& vec, const ConstAccessVector& vec2) {
+  assert(vec.size() == vec2.size());
+  for (int i = 0; i < vec.size(); i++) {
+    if (!isAboutSame(vec[i], vec2[i])) {
+      cout << setprecision(17) << TXT(vec[i]) << " is not equal to " << TXT(vec2[i]) << endl;
+      return false;
+    }
+  }
+  return true;
+}
+
 
 
 void test1() {
@@ -493,7 +557,7 @@ void test_matrix() {
     Mat[0][0] = 5;
     Mat[1][1] = 3;
     Mat[1][2] = 4;
-    auto result = M.multiplyOnGPU(Mat);
+    auto result = M.multiplyOnGPU(Mat, 0);
     cout << M << endl;
     cout << Mat << endl;
     auto result_on_CPU = M*Mat;
@@ -548,9 +612,48 @@ void test3() {
   cout << TXT(v2) << endl;
   cout << result << endl;
 }
-int main() {
-   test3();
+void test5() {
+  int K = 512;
+  Matrix m(1, K);
+  //m[0][0] = 1;
+  //m[0][1] = 10;
+  //m[0][2] = 100;
+  //m[1][0] = 1000;
+  //m[1][1] = 10000;
+  //m[1][2] = 100000;
+  //m.fillConsecutive();
+  m.fillRandom();
+  cout << TXT(m) << endl;
+  Matrix m2(K, 1);
+  //m2[0][0] = 2;
+  //m2[0][1] = 3;
+  m2.fillRandom();
+  //  m2[1][0] = 4;
+  //m2[1][1] = 5;
+  //m2[2][0] = 6;
+  //m2[2][1] = 7;
+  cout << TXT(m2) << endl;
+  auto res1 = m * m2;
+  auto res2 = m.multiplyOnGPU(m2, 1);
+  cout << TXT(res1) << endl;
+  cout << TXT(res2) << endl;
+  cout << TXT(isAboutSame(res1, res2)) << endl;
 }
+
+void test6() {
+  int K = 512;
+  Matrix m(2000, K);
+  m.fillRandom();
+  Matrix m2(K, 2003);
+  m2.fillRandom();
+  auto m3 = m * m2;
+  auto m4 = m.multiplyOnGPU(m2, 1);
+  cout << TXT(isAboutSame(m3, m4)) << endl;
+}
+int  main() {
+   test6();
+}
+
 
 void printBytes(void* ptr, int m_size) {
     for (int ii = 0; ii < m_size; ii++) {

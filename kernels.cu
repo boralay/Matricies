@@ -23,20 +23,22 @@ void kernel_gpu_add_double_vectors(int size, double *this_dev, double *other_dev
 }
 
 __global__
-void gpu_multiply_matrix_by_matrix(int first_rows, int second_cols, double *transposed_matrix_on_device, double *other_on_device, double *result_on_device) {
+void gpu_multiply_matrix_by_matrix_CbyR(int M, int N, double *A_T_eth_col, double *B_eth_row, double *C) {
   int tidx = blockIdx.x*blockDim.x + threadIdx.x;
-  if (tidx < first_rows * second_cols) {
-     int j = tidx % second_cols;
-     int i = tidx / second_cols;
-     result_on_device[tidx] += transposed_matrix_on_device[i] * other_on_device[j];
+  if (tidx < M * N) {
+     int j = tidx % N;
+     int i = tidx / N;
+     C[tidx] += A_T_eth_col[i] * B_eth_row[j];
   }
 }
 
-void kernel_gpu_multiply_matrix_by_matrix(int first_rows, int k, int second_cols, double *transposed_matrix_on_device, double *other_on_device, double *result_on_device) {
+void kernel_gpu_multiply_matrix_by_matrix_CbyR(int M, int K, int N, double *A_T, double *B, double *C) {
     const int BLOCKSIZE = 256;
-    int numblocks = (first_rows * second_cols + 255) / 256;
-    for (int i = 0; i < k; i++) {
-      gpu_multiply_matrix_by_matrix<<<numblocks, BLOCKSIZE>>>(first_rows, second_cols, transposed_matrix_on_device + (i * first_rows), other_on_device + (i * second_cols), result_on_device);
+    int numblocks = (M * N + 255) / 256;
+    for (int e = 0; e < K; e++) {
+      auto A_T_eth_col = A_T + (e * M);
+      auto B_eth_row = B + (e * N);
+      gpu_multiply_matrix_by_matrix_CbyR<<<numblocks, BLOCKSIZE>>>(M, N, A_T_eth_col, B_eth_row, C);
     }
 }
 
@@ -76,4 +78,71 @@ void kernel_gpu_dot_product_vectors(int size, double *this_dev, double *other_de
   assert(n >= size);
   assert(n / 2 < size);
   gpu_dot_product_vectors<<<numblocks, BLOCKSIZE>>>(n, size, this_dev, other_dev);
+}
+__global__
+void gpu_matrix_multiply_RbyC(int M, int N, int Kpowered, double *A, double *B_T, double* C) {
+  int tidx = blockIdx.x*blockDim.x + threadIdx.x;
+  __shared__ double local_vector[512];
+  int K = blockDim.x;
+  assert(K <= Kpowered);
+  assert(K <= 512);
+  // int M passed as arg
+
+  int k = threadIdx.x;
+  assert(0 <= k);
+  assert(     k <= K);
+  int n = blockIdx.x % N;
+  assert(0 <= n);
+  assert(     n <= N);
+  int m = blockIdx.x / N;
+  assert(0 <= m);
+  assert(     m <= M);
+  
+  if (tidx < K * N * M) {
+    local_vector[k] = A[m * K + k] * B_T[n * K + k];
+    // printf("m = %d, n = %d, k = %d, A[..] = %f, B_T[../] = %f, local_vector[k] = %f \n", m, n, k, A[m * K + k], B_T[n * K + k], local_vector[k]);
+  }
+  
+  
+  while (Kpowered > 1) {
+    Kpowered /= 2;
+    assert(Kpowered >= 1);
+    auto right_idx = k + Kpowered;
+    if (k < Kpowered) {
+        __syncthreads();
+	local_vector[k] += local_vector[right_idx];
+    }
+    
+  }
+ 
+  /* if (k == 0) {
+    for (int i = 1; i < K; i++) {
+      local_vector[0] += local_vector[i];
+    }
+  }
+  */
+  if (k == 0) {
+    C[m * N + n] += local_vector[0];
+  }
+}
+
+int uproundToPowerOfTwo(int k) {
+  assert(k > 0);
+  auto n = k - 1;
+  int count = 0;
+  
+  for (; n > 0; n /= 2) {
+    count++;
+  }
+  n = 1;
+  for (int i = 0; i < count; i++) {
+    n *= 2;
+  }
+  assert(n >= k);
+  assert(n / 2 < k);
+  return n;
+}
+
+void kernel_gpu_multiply_matrix_by_matrix_RbyC(int M, int K, int N, double *A, double *B_T, double *C) {
+  gpu_matrix_multiply_RbyC<<<M * N, K>>>(M, N, uproundToPowerOfTwo(K), A, B_T, C);
 }

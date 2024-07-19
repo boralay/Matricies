@@ -33,4 +33,4 @@ kernels.o: kernels.cu
 .PHONY: clean build tests
 
 clean:
-	rm -fr vector vector.o test main.o
+	rm -fr vector vector.o test main.o kernels.o
