@@ -80,40 +80,40 @@ void kernel_gpu_dot_product_vectors(int size, double *this_dev, double *other_de
   gpu_dot_product_vectors<<<numblocks, BLOCKSIZE>>>(n, size, this_dev, other_dev);
 }
 __global__
-void gpu_matrix_multiply_RbyC(int M, int N, int Kpowered, double *A, double *B_T, double* C) {
+void gpu_matrix_multiply_RbyC(int M, int N, int Kpowered, int K, double *A, double *B_T, double* C) {
   int tidx = blockIdx.x*blockDim.x + threadIdx.x;
   __shared__ double local_vector[512];
-  int K = blockDim.x;
+  // int K = blockDim.x;
   assert(K <= Kpowered);
   assert(K <= 512);
   // int M passed as arg
 
   int k = threadIdx.x;
   assert(0 <= k);
-  assert(     k <= K);
+  assert(     k <= Kpowered);
   int n = blockIdx.x % N;
   assert(0 <= n);
   assert(     n <= N);
   int m = blockIdx.x / N;
   assert(0 <= m);
   assert(     m <= M);
-  
-  if (tidx < K * N * M) {
+
+  __syncthreads();
+  if (tidx < Kpowered * N * M && k < K) {
     local_vector[k] = A[m * K + k] * B_T[n * K + k];
     // printf("m = %d, n = %d, k = %d, A[..] = %f, B_T[../] = %f, local_vector[k] = %f \n", m, n, k, A[m * K + k], B_T[n * K + k], local_vector[k]);
   }
   
-  
+  __syncthreads();
   while (Kpowered > 1) {
-    Kpowered /= 2;
-    assert(Kpowered >= 1);
-    auto right_idx = k + Kpowered;
-    if (k < Kpowered) {
-        __syncthreads();
-	local_vector[k] += local_vector[right_idx];
+      Kpowered /= 2;
+      assert(Kpowered >= 1);
+      auto right_idx = k + Kpowered;
+      if (k < Kpowered && right_idx < K) {
+          __syncthreads();
+          local_vector[k] += local_vector[right_idx];
+      }
     }
-    
-  }
  
   /* if (k == 0) {
     for (int i = 1; i < K; i++) {
@@ -121,9 +121,11 @@ void gpu_matrix_multiply_RbyC(int M, int N, int Kpowered, double *A, double *B_T
     }
   }
   */
+  //  __syncthreads();
   if (k == 0) {
     C[m * N + n] += local_vector[0];
   }
+  // __syncthreads();
 }
 
 int uproundToPowerOfTwo(int k) {
@@ -144,5 +146,8 @@ int uproundToPowerOfTwo(int k) {
 }
 
 void kernel_gpu_multiply_matrix_by_matrix_RbyC(int M, int K, int N, double *A, double *B_T, double *C) {
-  gpu_matrix_multiply_RbyC<<<M * N, K>>>(M, N, uproundToPowerOfTwo(K), A, B_T, C);
+    cudaDeviceSynchronize();
+    gpu_matrix_multiply_RbyC<<<M * N, uproundToPowerOfTwo(K)>>>(M, N, uproundToPowerOfTwo(K), K, A, B_T, C);
+  cudaDeviceSynchronize();
 }
+

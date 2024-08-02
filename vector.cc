@@ -497,7 +497,7 @@ bool isAboutSame(const ConstAccessVector& vec, const ConstAccessVector& vec2) {
   assert(vec.size() == vec2.size());
   for (int i = 0; i < vec.size(); i++) {
     if (!isAboutSame(vec[i], vec2[i])) {
-      cout << setprecision(17) << TXT(vec[i]) << " is not equal to " << TXT(vec2[i]) << endl;
+      cout << setprecision(17) << TXT(i) << TXT(vec[i]) << " is not equal to " << TXT(vec2[i]) << endl;
       return false;
     }
   }
@@ -641,16 +641,18 @@ void test5() {
 }
 
 void test6() {
-  int K = 512;
-  Matrix m(2000, K);
+  int K = 500;
+  Matrix m(100, K);
   m.fillRandom();
-  Matrix m2(K, 2003);
+  Matrix m2(K, 103);
   m2.fillRandom();
   auto m3 = m * m2;
   auto m4 = m.multiplyOnGPU(m2, 1);
+  auto m5 = m.multiplyOnGPU(m2, 0);
   cout << TXT(isAboutSame(m3, m4)) << endl;
+  cout << TXT(isAboutSame(m3, m5)) << endl;
 }
-int  main() {
+int main() {
    test6();
 }
 
