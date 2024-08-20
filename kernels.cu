@@ -39,7 +39,9 @@ void kernel_gpu_multiply_matrix_by_matrix_CbyR(int M, int K, int N, double *A_T,
       auto A_T_eth_col = A_T + (e * M);
       auto B_eth_row = B + (e * N);
       gpu_multiply_matrix_by_matrix_CbyR<<<numblocks, BLOCKSIZE>>>(M, N, A_T_eth_col, B_eth_row, C);
+      cudaDeviceSynchronize();  
     }
+    
 }
 
 __global__
@@ -80,17 +82,17 @@ void kernel_gpu_dot_product_vectors(int size, double *this_dev, double *other_de
   gpu_dot_product_vectors<<<numblocks, BLOCKSIZE>>>(n, size, this_dev, other_dev);
 }
 __global__
-void gpu_matrix_multiply_RbyC(int M, int N, int Kpowered, int K, double *A, double *B_T, double* C) {
+void gpu_matrix_multiply_RbyC(int M, int N, int K, int offset, int K_partitioned_powered, int K_partitioned, double *A, double *B_T, double* C) {
   int tidx = blockIdx.x*blockDim.x + threadIdx.x;
   __shared__ double local_vector[512];
-  // int K = blockDim.x;
-  assert(K <= Kpowered);
-  assert(K <= 512);
+  // int K_partitioned = blockDim.x;
+  assert(K_partitioned <= K_partitioned_powered);
+  assert(K_partitioned <= 512);
   // int M passed as arg
 
   int k = threadIdx.x;
   assert(0 <= k);
-  assert(     k <= Kpowered);
+  assert(     k <= K_partitioned_powered);
   int n = blockIdx.x % N;
   assert(0 <= n);
   assert(     n <= N);
@@ -99,17 +101,17 @@ void gpu_matrix_multiply_RbyC(int M, int N, int Kpowered, int K, double *A, doub
   assert(     m <= M);
 
   __syncthreads();
-  if (tidx < Kpowered * N * M && k < K) {
-    local_vector[k] = A[m * K + k] * B_T[n * K + k];
-    // printf("m = %d, n = %d, k = %d, A[..] = %f, B_T[../] = %f, local_vector[k] = %f \n", m, n, k, A[m * K + k], B_T[n * K + k], local_vector[k]);
+  if (tidx < K_partitioned_powered * N * M && k < K_partitioned) {
+    local_vector[k] = A[m * K + offset + k] * B_T[n * K + offset + k];
+    // printf("m= %d, n= %d, k= %d, off= %d, ii= %d, jj= %d, A[.]= %f, B_T[.]= %f, lvec[k]= %f \n", m, n, k, offset, m * K + offset + k, n * K + offset + k, A[m * K + offset + k], B_T[n * K + offset + k], local_vector[k]);
   }
   
   __syncthreads();
-  while (Kpowered > 1) {
-      Kpowered /= 2;
-      assert(Kpowered >= 1);
-      auto right_idx = k + Kpowered;
-      if (k < Kpowered && right_idx < K) {
+  while (K_partitioned_powered > 1) {
+      K_partitioned_powered /= 2;
+      assert(K_partitioned_powered >= 1);
+      auto right_idx = k + K_partitioned_powered;
+      if (k < K_partitioned_powered && right_idx < K_partitioned) {
           __syncthreads();
           local_vector[k] += local_vector[right_idx];
       }
@@ -146,8 +148,26 @@ int uproundToPowerOfTwo(int k) {
 }
 
 void kernel_gpu_multiply_matrix_by_matrix_RbyC(int M, int K, int N, double *A, double *B_T, double *C) {
+  int count_parts = 1; // default = 1
+  int offset = 0;
+  int partitioned_K = (K > 512) ? 512 : K;
+  
+  while (offset < K) {
+    
+    gpu_matrix_multiply_RbyC<<<M * N, uproundToPowerOfTwo(partitioned_K)>>>(M, N, K, offset, uproundToPowerOfTwo(partitioned_K), partitioned_K, A, B_T, C);
     cudaDeviceSynchronize();
-    gpu_matrix_multiply_RbyC<<<M * N, uproundToPowerOfTwo(K)>>>(M, N, uproundToPowerOfTwo(K), K, A, B_T, C);
-  cudaDeviceSynchronize();
+    //  printf("ONE CYCLE DONE \n");
+
+
+    if (offset + 512 < K) {
+      count_parts++;
+    }
+    if (count_parts * 512 > K) {
+      partitioned_K = K - ((count_parts - 1) * 512);
+    }
+    offset += 512;
+    
+  }  
 }
+
 

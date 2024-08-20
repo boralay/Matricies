@@ -1,5 +1,6 @@
 #include <iostream>
 #include <iomanip>
+#include <ctime>
 #include <cuda_runtime_api.h>
 #include <cuda.h>
 #include <stdlib.h>
@@ -476,9 +477,58 @@ public:
       if (err5 != cudaSuccess) {
 	cout << "cudaMemcpy fail at line:" << __FILE__ << ":" << __LINE__ << endl;
       }
+      cudaFree(this->ptr);
+      cudaFree(other.ptr);
+      cudaFree(transposed_other.ptr);
+      cudaFree(transposed_matrix.ptr);
+      cudaFree(result.ptr);
       return result;
   }
-    private: 
+  /*
+  Matrix matrix_partition(Matrix& m, bool part_by_rows) {
+    if (!part_by_rows) {
+      int count = 0;
+      int i = 0;
+      Vector result_vec[(num_cols() / 512) + 1];
+      while (count < num_cols) {
+	i++;
+	Matrix result(num_rows, 512);
+	if (count + 512 > num_cols) {
+	  count = num_cols();
+	}
+	count += 512;
+	for (int cols = 0; cols <= 512; cols++) {
+	  for (int rows = 0; rows < m.num_rows(); rows++) {
+	    result[rows][cols] = m[rows][cols];
+	  }
+	}
+	result_vec[i] = result;
+      }
+    }
+
+    if (part_by_rows) {
+      int count = 0;
+      int i = 0;
+      Vector result_vec[(num_rows() / 512) + 1];
+      while (count < num_rows) {
+	Matrix result(512, num_cols);
+	if (count + 512 > num_rows) {
+	  count = num_rows();
+	}
+	count += 512;
+	for (int rows = 0; rows <= 512; rows++) {
+	  for (int cols = 0; cols < m.num_cols(); cols++) {
+	    result[rows][cols] = m[rows][cols];
+	  }
+	}
+	result_vec[i] = result;
+	i++;
+      }
+    }
+    return result_vec;
+  }
+  */
+  private: 
     int num_cols_ = 0;
 };
 bool isAboutSame(const double& double1, const double& double2) {
@@ -613,8 +663,9 @@ void test3() {
   cout << result << endl;
 }
 void test5() {
-  int K = 512;
-  Matrix m(1, K);
+  int K = 2048;
+  Matrix m(2048, K);
+  // cout << TXT(m) << endl;
   //m[0][0] = 1;
   //m[0][1] = 10;
   //m[0][2] = 100;
@@ -623,8 +674,7 @@ void test5() {
   //m[1][2] = 100000;
   //m.fillConsecutive();
   m.fillRandom();
-  cout << TXT(m) << endl;
-  Matrix m2(K, 1);
+  Matrix m2(K, 2047);
   //m2[0][0] = 2;
   //m2[0][1] = 3;
   m2.fillRandom();
@@ -632,28 +682,90 @@ void test5() {
   //m2[1][1] = 5;
   //m2[2][0] = 6;
   //m2[2][1] = 7;
-  cout << TXT(m2) << endl;
-  auto res1 = m * m2;
-  auto res2 = m.multiplyOnGPU(m2, 1);
-  cout << TXT(res1) << endl;
-  cout << TXT(res2) << endl;
-  cout << TXT(isAboutSame(res1, res2)) << endl;
+  // cout << TXT(m2) << endl;
+  // auto res1 = m * m2;
+  auto res2 = m.multiplyOnGPU(m2, 0);
+  auto res3 = m.multiplyOnGPU(m2, 1);
+  // cout << TXT(res1) << endl;
+  // cout << TXT(res2) << endl;
+  
+  // cout << TXT(isAboutSame(res1, res2)) << endl;
+  // cout << TXT(isAboutSame(res1, res3)) << endl;
+  cout << TXT(isAboutSame(res3, res2)) << endl;
 }
 
-void test6() {
-  int K = 500;
-  Matrix m(100, K);
+void test6(int M, int K, int N) {
+  Matrix m(M, K);
   m.fillRandom();
-  Matrix m2(K, 103);
+  // cout << TXT(m) << endl;
+  Matrix m2(K, N);
   m2.fillRandom();
+  /*
+  clock_t start, end;
+  start = clock();
   auto m3 = m * m2;
-  auto m4 = m.multiplyOnGPU(m2, 1);
+  end = clock();
+  double time_taken = ((double)(end - start)) / CLOCKS_PER_SEC;
+  printf("m * m2 on CPU  took %f seconds to execute.\n", time_taken);
+  */
+  
+  clock_t start2, end2;
+  start2 = clock();
+  auto m4 = m.multiplyOnGPU(m2,1);
+  end2 = clock();
+  double time_taken2 = ((double)(end2 - start2)) / CLOCKS_PER_SEC;
+  printf("RbyC on GPU  took %f seconds to execute.\n", time_taken2);
+
+  clock_t start3, end3;
+  start3 = clock();
   auto m5 = m.multiplyOnGPU(m2, 0);
-  cout << TXT(isAboutSame(m3, m4)) << endl;
-  cout << TXT(isAboutSame(m3, m5)) << endl;
+  end3 = clock();
+  double time_taken3 = ((double)(end3 - start3)) / CLOCKS_PER_SEC;
+  printf("CbyR on GPU  took %f seconds to execute.\n", time_taken3);
+
+  //cout << TXT(isAboutSame(m3, m4)) << endl;
+  cout << TXT(isAboutSame(m4, m5)) << endl;
+  //cout << TXT(isAboutSame(m3, m5)) << endl;
 }
+
+void test6_loop() {
+  int M = 2;
+  int K = 2;
+  int N = 2;
+  for (int ii = 2; ii < 50000000; ii++) {
+    if (ii % 3 == 0) {
+      K *= 2;
+    }
+    if (ii % 3 == 1) {
+      M *= 2;
+    }
+    if (ii % 3 == 2) {
+      N *= 2;
+    }
+    cout << TXT(M) << " " << TXT(K) << " " << TXT(N) << endl;
+    test6(M, K, N);
+  }
+}
+bool test_multiple() {
+  for (int K = 2; K < 50000000; K *= 2) {
+    Matrix m(10, K);
+    m.fillRandom();
+    Matrix m2(K, 80);
+    m2.fillRandom();
+    auto m3 = m * m2;
+    auto m4 = m.multiplyOnGPU(m2, 1);
+    auto m5 = m.multiplyOnGPU(m2, 0);
+    if (!isAboutSame(m3, m4) || !isAboutSame(m3, m5)) {
+	return false;
+    }
+    cout << "WORKS FOR K = " << TXT(K) << endl;
+  }
+    return true;
+}
+
+
 int main() {
-   test6();
+   test5();
 }
 
 
@@ -664,5 +776,3 @@ void printBytes(void* ptr, int m_size) {
         cout << ii << ": " << var << endl;
     }
 }
-
-
