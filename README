@@ -1,0 +1,10 @@
+Object oriented framework
+Implements a vector as 3 separate classes: ConstAccessVector, AccessVector, and Vector
+Having these 3 classes allows minimization of code repetition and efficient access to parts or whole of the vector without any memory copying
+The code has a lot of asserts which helps the user catch problems early on
+The STL implementation also provides efficient access through iterators but doesn’t have range checking, which my implementation does
+Implementation vector and matrix operations such as multiplication, addition, and dot product on both CPU and GPU. Matrix multiplication is implemented in two different ways on GPU. They are different in terms of order of multiplications and memory bandwidth/access pattern. The time difference between the implementations was very similar, though row-by-column was slightly faster. More research is needed on this. Both implementations on GPU were X times faster than CPU for Matrix X. Add a test result for the time it took. 
+
+Further implementations to be done: 
+In the current operation the gpu operation is sent from CPU to GPU and then results are sent back to CPU (no way to keep on GPU). I could have vector-on-GPU, matrix-on-GPU classes. Then I would be able to do multiple operations on GPU before bringing it back to CPU, and only doing so when the user requests.
+Analyze differences between the GPU implementations
