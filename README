@@ -7,4 +7,3 @@ Implementation vector and matrix operations such as multiplication, addition, an
 
 Further implementations to be done: 
 In the current operation the gpu operation is sent from CPU to GPU and then results are sent back to CPU (no way to keep on GPU). I could have vector-on-GPU, matrix-on-GPU classes. Then I would be able to do multiple operations on GPU before bringing it back to CPU, and only doing so when the user requests.
-Analyze differences between the GPU implementations
